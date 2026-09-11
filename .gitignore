@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.data/
+.env
+.aws-sam/
+samconfig.toml
+node_modules/
+dist/
+playwright-report/
+test-results/
+.DS_Store
