@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: BurstLab - bounded QR processing experiments with no hosted control plane
+
+Parameters:
+  WorkerConcurrency:
+    Type: Number
+    Default: 2
+    AllowedValues: [2, 3, 4, 5]
+  EnableQueue:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+
+Conditions:
+  QueueEnabled: !Equals [!Ref EnableQueue, 'true']
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures: [arm64]
+    Timeout: 15
+    MemorySize: 256
+    ReservedConcurrentExecutions: !Ref WorkerConcurrency
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref Jobs
+        BUCKET_NAME: !Ref Results
+    Tags:
+      Project: BurstLab
+
+Resources:
+  Results:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireDemoArtifacts
+            Status: Enabled
+            ExpirationInDays: 1
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  Jobs:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  DeadLetters:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 86400
+      SqsManagedSseEnabled: true
+
+  WorkQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 90
+      MessageRetentionPeriod: 86400
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetters.Arn
+        maxReceiveCount: 5
+
+  DirectWorker:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/worker/
+      Handler: handler.direct_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Jobs
+        - S3WritePolicy:
+            BucketName: !Ref Results
+
+  QueuedWorker:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/worker/
+      Handler: handler.queue_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Jobs
+        - S3WritePolicy:
+            BucketName: !Ref Results
+      Events:
+        Jobs:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt WorkQueue.Arn
+            BatchSize: 1
+            Enabled: !If [QueueEnabled, true, false]
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            ScalingConfig:
+              MaximumConcurrency: !Ref WorkerConcurrency
+
+  DirectLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${DirectWorker}'
+      RetentionInDays: 1
+
+  QueuedLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${QueuedWorker}'
+      RetentionInDays: 1
+
+Outputs:
+  DirectFunction:
+    Value: !Ref DirectWorker
+  QueuedFunction:
+    Value: !Ref QueuedWorker
+  QueueUrl:
+    Value: !Ref WorkQueue
+  QueueArn:
+    Value: !GetAtt WorkQueue.Arn
+  DeadLetterUrl:
+    Value: !Ref DeadLetters
+  TableName:
+    Value: !Ref Jobs
+  BucketName:
+    Value: !Ref Results
