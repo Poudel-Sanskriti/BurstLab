@@ -1,4 +1,5 @@
 """The replaceable workload. No network access or AWS coupling."""
+
 from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
@@ -17,7 +18,9 @@ def render_qr(payload: str) -> Artifact:
         raise ValueError("Enter some text or a URL.")
     if len(payload.encode("utf-8")) > 512:
         raise ValueError("Payload exceeds 512 UTF-8 bytes.")
-    code = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=7, border=4)
+    code = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=7, border=4
+    )
     code.add_data(payload)
     code.make(fit=True)
     buffer = BytesIO()
