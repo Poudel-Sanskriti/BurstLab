@@ -393,7 +393,7 @@ export default function App() {
                     <span /> OBSERVE. COMPARE. UNDERSTAND.
                   </div>
                   <h1>
-                    Systems under pressure<span>.</span>
+                    Compare processing paths<span>.</span>
                   </h1>
                   <p>
                     A small workload. Two architectures. See what happens in
@@ -722,7 +722,10 @@ export default function App() {
                   </div>
                   <CompletionChart run={shown} />
                 </section>
-                <section className="events-card">
+                <details className="events-card">
+                  <summary>
+                    Event log <ChevronDown size={14} />
+                  </summary>
                   <div className="section-top">
                     <div className="section-title">
                       <Terminal size={16} />
@@ -768,7 +771,7 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                </section>
+                </details>
               </div>
               <div className="method-note">
                 <ShieldCheck size={17} />
@@ -1493,7 +1496,7 @@ function CompletionChart({ run }: { run: Run | null }) {
               y1={bottom - n * (bottom - top)}
               x2={right}
               y2={bottom - n * (bottom - top)}
-              stroke="#e5e9e3"
+              stroke="#e2e8f0"
               strokeDasharray="3 5"
             />
             <text
@@ -1520,7 +1523,7 @@ function CompletionChart({ run }: { run: Run | null }) {
             <path
               key={p.lane}
               d={p.d}
-              stroke={p.lane === "direct" ? "#d98256" : "#248774"}
+              stroke={p.lane === "direct" ? "#d98256" : "#2563eb"}
               strokeWidth="2.5"
               fill="none"
             />
