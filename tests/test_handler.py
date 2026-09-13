@@ -27,6 +27,23 @@ class HandlerTests(unittest.TestCase):
             result = process(job, table, s3)
         self.assertEqual(result["status"], "succeeded")
         self.assertTrue(s3.put_object.call_args.kwargs["Body"].startswith(b"\x89PNG"))
+        for call in table.update_item.call_args_list:
+            names = call.kwargs["ExpressionAttributeNames"]
+            self.assertEqual(names["#owner"], "owner")
+            self.assertNotIn(" owner=", call.kwargs["UpdateExpression"])
+            self.assertNotIn("error=", call.kwargs["UpdateExpression"])
+        self.assertIn("error", table.update_item.call_args.kwargs["ExpressionAttributeNames"].values())
+
+    def test_failure_update_aliases_error_field(self):
+        table, s3 = Mock(), Mock()
+        table.update_item.return_value = {"Attributes": {"attempts": 1, "started_at": 1000}}
+        job = {"run_id": "r1", "id": "j1", "lane": "queued", "payload": "hello", "fail_first": True}
+        with self.assertRaisesRegex(RuntimeError, "Injected"):
+            process(job, table, s3)
+        update = table.update_item.call_args.kwargs
+        self.assertIn("error", update["ExpressionAttributeNames"].values())
+        self.assertNotIn("error=", update["UpdateExpression"])
+        self.assertIn("#owner", update["ConditionExpression"])
 
     def test_only_failed_queue_messages_retry(self):
         records = [{"messageId": str(i), "body": '{"lane":"queued"}'} for i in range(3)]

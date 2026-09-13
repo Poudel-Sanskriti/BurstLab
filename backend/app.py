@@ -6,7 +6,9 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
+from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -16,16 +18,29 @@ from .models import RunConfig
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def create_app(directory=None, mode=None):
-    directory = Path(directory or os.environ.get("BURSTLAB_DATA", ROOT / ".data"))
-    mode = mode or os.environ.get("BURSTLAB_MODE", "local")
-    if mode not in ("local", "aws"):
-        raise ValueError("BURSTLAB_MODE must be local or aws")
-    cloud = None
-    if mode == "aws":
-        from .cloud import Cloud
+class EnvironmentChoice(BaseModel):
+    mode: Literal["aws", "local"]
 
-        cloud = Cloud(directory / "aws-config.json")
+
+def create_app(directory=None):
+    directory = Path(directory or os.environ.get("BURSTLAB_DATA", ROOT / ".data"))
+    mode = "aws"
+    preference_path = directory / "environment.json"
+    if preference_path.is_file():
+        try:
+            saved = json.loads(preference_path.read_text()).get("mode")
+            if saved in ("aws", "local"):
+                mode = saved
+        except (ValueError, OSError):
+            pass
+    cloud = None
+    setup_message = "Deploy your AWS stack, run scripts/aws.py configure, then restart the controller."
+    if (directory / "aws-config.json").is_file():
+        from .cloud import Cloud
+        try:
+            cloud = Cloud(directory / "aws-config.json")
+        except Exception:
+            setup_message = "AWS configuration could not be loaded. Check aws-config.json and your AWS profile, then restart the controller."
     engine = Engine(directory, mode, cloud)
     token = secrets.token_urlsafe(32)
 
@@ -80,29 +95,43 @@ def create_app(directory=None, mode=None):
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    @app.get("/api/session")
-    async def session():
-        response = JSONResponse(
-            {
+    def session_info():
+        return {
                 "token": token,
-                "mode": mode,
-                "region": cloud.region if cloud else "local",
+                "mode": engine.mode,
+                "region": cloud.region if cloud else None,
+                "configured": cloud is not None,
+                "setup_message": None if cloud else setup_message,
                 "max_jobs": 100,
                 "version": "0.1.0",
                 "active_run_id": engine.active["id"]
                 if engine.active and engine.task and not engine.task.done()
                 else None,
             }
-        )
+
+    @app.get("/api/session")
+    async def session():
+        response = JSONResponse(session_info())
         response.set_cookie("burstlab_session", token, httponly=True, samesite="strict")
         return response
 
+    @app.post("/api/environment")
+    async def change_environment(choice: EnvironmentChoice):
+        if engine.starting or (engine.task and not engine.task.done()):
+            raise HTTPException(409, "Finish the active experiment before switching environments.")
+        engine.mode = choice.mode
+        engine.active = None
+        preference_path.write_text(json.dumps({"mode": choice.mode}))
+        return session_info()
+
     @app.get("/api/runs")
     async def history():
-        return engine.history()
+        return [run for run in engine.history() if run["mode"] == engine.mode]
 
     @app.post("/api/runs", status_code=201)
     async def start(config: RunConfig):
+        if engine.mode == "aws" and cloud is None:
+            raise HTTPException(503, setup_message)
         try:
             return await engine.start(config)
         except ValueError as exc:
@@ -112,7 +141,7 @@ def create_app(directory=None, mode=None):
 
     def get_run(run_id):
         run = engine.get(run_id)
-        if run is None:
+        if run is None or run["mode"] != engine.mode:
             raise HTTPException(404, "Experiment not found")
         return run
 
@@ -133,6 +162,7 @@ def create_app(directory=None, mode=None):
         if format == "csv":
             buffer = io.StringIO()
             fields = [
+                "environment",
                 "lane",
                 "id",
                 "status",
@@ -145,7 +175,7 @@ def create_app(directory=None, mode=None):
             ]
             writer = csv.DictWriter(buffer, fields, extrasaction="ignore")
             writer.writeheader()
-            writer.writerows(run["jobs"])
+            writer.writerows({"environment": run["mode"], **job} for job in run["jobs"])
             return Response(
                 buffer.getvalue(),
                 media_type="text/csv",
@@ -171,7 +201,7 @@ def create_app(directory=None, mode=None):
             raise HTTPException(404, "No successful artifact for this job")
         if run["mode"] == "aws":
             if cloud is None:
-                raise HTTPException(409, "Restart in AWS mode to open cloud artifacts")
+                raise HTTPException(503, setup_message)
             return RedirectResponse(cloud.result_url(job["object_key"]))
         path = directory / "outputs" / run_id / lane / f"{job_id}.png"
         if not path.is_file():

@@ -28,7 +28,7 @@ def main():
             )
         )
         print(
-            "Saved stack identifiers (no credentials). Start the app with BURSTLAB_MODE=aws after enabling the queue."
+            "Saved stack identifiers (no credentials). Enable the queue, then restart the app."
         )
     client = session.client("lambda")
     mappings = client.list_event_source_mappings(

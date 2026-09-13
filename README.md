@@ -1,68 +1,40 @@
 # BurstLab
 
-**A visual lab for systems under pressure.** Compare direct and queued processing, inspect real QR outputs, and replay what happened to every job.
+**A visual AWS lab for systems under pressure.** Compare direct and queued processing, inspect generated QR images, and replay observed job events.
 
-## Run the demo
+## Execution environment
 
-Requirements: Python 3.11+ and Node.js 20.19+ (or a current Node 22/24 release). The Lambda deployment uses Python 3.13.
+AWS is the default environment. AWS experiments use your deployed Lambda workers, SQS queue, DynamoDB table, and S3 bucket. The dashboard/controller run on your computer to avoid hosted-server costs. Choose **Settings → Execution environment → Local demo** for free, simulated scheduling with real QR output.
 
-```bash
-bash scripts/dev.sh
-```
+Without an AWS configuration, Run is disabled in AWS mode. Settings lets you select Local demo instead. The main dashboard has no prominent simulation banner; Settings and JSON reports retain the actual environment. History and artifact access are scoped to the selected environment, so runs are not mixed. You cannot switch during an experiment, and your selection persists across restarts.
 
-Open **http://127.0.0.1:8000**. The first launch installs dependencies and builds the frontend; subsequent launches reuse the installed dependencies. Stop the server with Ctrl+C.
+## Get started
 
-**Default mode is local. No AWS account, credentials, or paid API is needed.** Local mode runs real QR generation and writes actual images. Its concurrency rejection, queue, and short retry delay are local models—not measurements of AWS behavior. The UI labels this clearly.
+1. Install Python 3.11+ and Node.js 20.19+ or a current Node 22/24 release.
+2. Run `bash scripts/dev.sh` to install dependencies, build the dashboard, and open the controller at **http://127.0.0.1:8000**.
+3. Follow [AWS setup](docs/AWS_SETUP.md): configure AWS credentials, build/deploy the SAM stack, save its outputs with the helper, and enable the queue trigger.
+4. Restart `bash scripts/dev.sh`. No mode environment variable is needed; select AWS in Settings if you previously used Local demo.
+5. Start with 5 jobs per path. The controller checks deployed resource settings before submitting work.
 
-Choose **Recovery test**, then **Run experiment**. Direct requests compete for limited capacity; the queued path buffers work and retries selected first-attempt failures. Click a tile to inspect the payload, attempts, and QR image. Completed runs can be replayed and exported as JSON or CSV.
+A saved configuration means the resource identifiers are available; it does not prove the deployment is healthy. The preflight check runs before an experiment. No cloud resources are created by the launcher.
 
-## What is implemented
+## Implemented components
 
-- Shared Python QR workload with bounded UTF-8 inputs and deterministic PNG results.
-- Direct and queued Lambda adapters with conditional job claims, retry accounting, private S3 outputs, and DynamoDB state.
-- AWS SAM template for two Lambda functions, SQS and a dead-letter queue, S3, DynamoDB, and one-day CloudWatch logs.
-- Local controller with sequential comparison trials, seeded fault selection, stop-arrivals control, SQLite history, metrics, and exports.
-- AWS controller adapter with configuration preflight, synchronous direct invocation, SQS submissions, and run reconciliation.
-- React/TypeScript dashboard with presets, animated processing paths, job tiles, chart, event stream, details, archive, and replay.
+- Shared Python QR worker; direct synchronous Lambda and SQS-triggered Lambda adapters.
+- Conditional DynamoDB claims, repeatable S3 artifact keys, bounded application retries, and partial-batch failure responses.
+- SAM/CloudFormation template with private encrypted S3, DynamoDB, SQS, dead-letter queue, and short-lived CloudWatch logs.
+- Python/FastAPI controller, real AWS invocation, state reconciliation, SQLite run history, JSON/CSV export, and stop-arrivals control.
+- React/TypeScript dashboard with experiment presets, two processing lanes, job inspection, QR previews, charts, archive, and replay.
 
-**Live AWS deployment and cloud measurements are pending.** The account is not available yet. Passing local tests does not validate AWS quotas, IAM access, deployment packaging, or live timing. See [AWS setup](docs/AWS_SETUP.md) when ready.
+**Live AWS deployment and end-to-end verification are still pending.** Tests use isolated logic and AWS mocks; they do not validate live IAM permissions, service quotas, or packaging.
 
-## Stack and layout
+## Run controls
 
-```text
-backend/
-  worker/          Shared QR logic and Lambda adapters
-  app.py           Local, session-protected FastAPI server
-  engine.py        Experiment lifecycle and local execution
-  cloud.py         Real AWS invocation and polling adapter
-  store.py         SQLite history
-frontend/          React + TypeScript + Vite dashboard
-infra/             AWS SAM/CloudFormation template
-scripts/           Local launcher and explicit AWS controls
-tests/             Focused backend unit tests
-.data/             Ignored run history, images, and AWS identifiers
-```
+Maximum 100 jobs per path, one active experiment, 2–5 workers per path, 0–1000 ms injected delay, and up to 5 application attempts. Both functions must have matching deployed concurrency, memory, and timeout settings. Changing concurrency in the UI requires matching changes to the SAM deployment.
 
-The sibling `artifacts` directory belongs outside this repository and is not published with it. No credentials belong in source control.
+Paths run sequentially using the same payload manifest. Direct requests have one synchronous attempt; queued requests may retry. Injected delays and failures are deliberate conditions, not natural QR-processing performance. Latency percentiles include successful jobs only; compare them alongside unsuccessful outcomes. Stopping arrivals allows accepted work to drain.
 
-## Controls and interpretation
-
-| Control | Meaning |
-| --- | --- |
-| Jobs per path | 1–100 distinct jobs sent to each architecture |
-| Arrival rate | Requested jobs/second for steady runs; burst sends all scheduled jobs together |
-| Worker concurrency | Equal capacity in each local lane; must match deployed Lambda caps in AWS mode |
-| Injected delay | Deliberate sleep, not a QR computation benchmark |
-| First-attempt failures | Seeded subset fails once before generating its output |
-| Queued attempt limit | Maximum application processing attempts; direct requests have no caller retries |
-
-Trials run **sequentially** to reduce shared resource contention. Both use the same payload manifest, with an added job suffix. Flip the first path in Advanced settings for another run. The chart aligns each trial to its own start time.
-
-Latency percentiles include **successful jobs only**. Read them alongside unsuccessful counts. Waiting time includes scheduling and transport. Throughput is unique completions divided by the phase observation duration. The direct baseline and queued path have different retry policies; results do not establish that buffering alone caused every difference.
-
-**Stop new arrivals** does not cancel already accepted work. It drains existing jobs. Local history is retained in `.data/`; restarting the controller marks interrupted experiments rather than pretending they completed. For an interrupted AWS run, inspect the actual queues before continuing.
-
-## Focused tests
+## Tests and development
 
 ```bash
 .venv/bin/python -m pytest tests -q
@@ -70,26 +42,18 @@ npm --prefix frontend test
 npm --prefix frontend run build
 ```
 
-The unit tests cover QR output, bounds, queue partial failures, job accounting, retry recovery, stopping, local API restrictions, and frontend metric/replay calculations. They are a small PoC suite, not a production certification.
-
-For frontend development in two terminals:
+For frontend development, run the FastAPI controller and Vite in separate terminals:
 
 ```bash
 .venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
 npm --prefix frontend run dev
 ```
 
-Vite proxies API requests to the controller. Production assets are built and served by FastAPI for the single-command demo.
+The API is session-protected and loopback-bound. AWS credentials remain in the server-side SDK credential chain, never in browser code. Generated URLs are encoded into QR images without being visited.
 
-## Cost and remaining limitations
+## Cost and limitations
 
-- Local experiments incur no AWS service charges. Installed development tools and your existing AI subscriptions are separate.
-- Cloud deployment is manual; the queue trigger starts disabled. Enable it for testing, then disable it.
-- No NAT gateway, hosted control plane, paid inference, always-on VM, or provisioned concurrency.
-- Storage expires after one day in AWS; expiration is asynchronous. Logs retain one day. Provisioning artifacts and resources can still cost money until cleaned up.
-- The suggested $5 development budget is a target, not an enforced billing cap. Use a few small runs and check your account's actual usage.
-- Local execution does not model AWS cold starts, SQS visibility timing, or approximate queue metrics.
-- AWS telemetry is polled every two seconds and may skip short visual transitions; it preserves observed events and authoritative job state. Events are not a transactional audit log.
-- App-level exhausted retries are labeled **Exhausted**; physical SQS redrive happens separately. A message rejected before job state exists may remain unresolved until the queue is inspected.
-- Local history is for one developer, not a multi-user hosted product. QR encodings are tested as real PNG outputs; comprehensive scanner interoperability remains future work.
+Keep tests small and disable the SQS event-source mapping after the session. No always-on VM, NAT gateway, hosted control plane, provisioned concurrency, or paid inference is required. Storage and logs use short retention, but expiry is asynchronous and budget alerts do not cap the bill.
+
+SQS retries can take 90 seconds or longer. Telemetry is polled every two seconds; brief transitions may not animate even when recorded. Events are not a transactional audit log. App-level exhausted attempts and physical dead-letter queue routing are distinct. Interrupted cloud jobs can continue: inspect queues before another run. The lab does not predict arbitrary production capacity or promise exactly-once delivery.
 

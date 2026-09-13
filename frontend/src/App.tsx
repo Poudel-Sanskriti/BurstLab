@@ -113,6 +113,8 @@ export default function App() {
   const [replay, setReplay] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [help, setHelp] = useState(false);
+  const [settings, setSettings] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const live = !!run && ["running", "stopping"].includes(run.status);
   const busy = live || starting;
   const shown = useMemo(
@@ -122,6 +124,26 @@ export default function App() {
 
   async function refreshHistory() {
     setHistory(await api<HistoryItem[]>("/runs"));
+  }
+  async function switchEnvironment(mode: "aws" | "local") {
+    setSwitching(true);
+    try {
+      const next = await api<Session>("/environment", {
+        method: "POST",
+        body: JSON.stringify({ mode }),
+      });
+      setSession(next);
+      setRun(null);
+      setReplay(null);
+      setPlaying(false);
+      setSelected(null);
+      setError("");
+      await refreshHistory();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSwitching(false);
+    }
   }
   async function openRun(id: string) {
     try {
@@ -199,6 +221,7 @@ export default function App() {
       if (event.key === "Escape") {
         setSelected(null);
         setHelp(false);
+        setSettings(false);
       }
     };
     window.addEventListener("keydown", close);
@@ -288,20 +311,11 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="local-card">
-            <span className="online-dot" />
-            <span>
-              {session?.mode === "aws"
-                ? "AWS connected"
-                : "Runs on your machine"}
-              <small>
-                {session?.mode === "aws"
-                  ? session.region
-                  : "Local mode · no AWS calls"}
-              </small>
-            </span>
-            <ShieldCheck size={17} />
-          </div>
+          <button className="help-link" onClick={() => setSettings(true)}>
+            <Settings2 size={17} />
+            Settings
+            <ArrowUpRight size={15} />
+          </button>
           <button className="help-link" onClick={() => setHelp(true)}>
             <CircleHelp size={17} />
             How this lab works
@@ -330,16 +344,39 @@ export default function App() {
             </span>
           </div>
           <div className="topbar-right">
-            <span className="mode-tag">
-              <span className="online-dot" />
-              {session?.mode === "aws" ? "AWS LIVE" : "LOCAL SIMULATION"}
-            </span>
+            <button
+              className="button secondary"
+              onClick={() => setSettings(true)}
+              aria-label="Execution settings"
+            >
+              <Settings2 size={15} />
+              Settings
+            </button>
             <span className="desktop-only">
               QR worker <span className="mono">v1.0</span>
             </span>
           </div>
         </header>
         <div className="page-content">
+          {session?.mode === "aws" && !session.configured && (
+            <section className="aws-setup-card" role="status">
+              <div>
+                <span className="eyebrow">CONNECT YOUR ENVIRONMENT</span>
+                <h2>Your lab. Your AWS stack.</h2>
+                <p>{session.setup_message}</p>
+                <p>
+                  Deploy with AWS SAM → save the stack configuration → enable
+                  the queue → restart BurstLab.
+                </p>
+              </div>
+              <button
+                className="button secondary"
+                onClick={() => setSettings(true)}
+              >
+                Open settings <Settings2 size={15} />
+              </button>
+            </section>
+          )}
           {error && (
             <div className="error-banner" role="alert">
               <span>{error}</span>
@@ -436,11 +473,7 @@ export default function App() {
                     }
                   />
                   <div className="run-action">
-                    <span>
-                      {session?.mode === "aws"
-                        ? "Bounded AWS experiment"
-                        : "Real QR output · zero cloud usage"}
-                    </span>
+                    <span>Bounded experiment · real QR output</span>
                     {live ? (
                       <button
                         className="button stop"
@@ -455,7 +488,12 @@ export default function App() {
                     ) : (
                       <button
                         className="button primary"
-                        disabled={!session || starting}
+                        disabled={
+                          !session ||
+                          (session.mode === "aws" && !session.configured) ||
+                          starting ||
+                          switching
+                        }
                         onClick={start}
                       >
                         {starting ? (
@@ -737,10 +775,8 @@ export default function App() {
                 <p>
                   <b>Honest experiments, useful evidence.</b> Paths run
                   sequentially with the same workload and capacity. Direct
-                  requests get one attempt; queued requests may retry.{" "}
-                  {session?.mode === "aws"
-                    ? "AWS delivery timing and account limits affect results."
-                    : "Local scheduling is a simulation—not an AWS benchmark."}
+                  requests get one attempt; queued requests may retry. AWS
+                  delivery timing and account limits affect results.
                 </p>
                 <button onClick={() => setPage("architecture")}>
                   See the design
@@ -822,7 +858,7 @@ export default function App() {
                           </small>
                         </span>
                         <span className="small-tag">
-                          {r.mode === "local" ? "Local" : "AWS"}
+                          {r.mode === "aws" ? "AWS" : "Local demo"}
                         </span>
                         <span>
                           {r.metrics.direct.completed}/{r.config.count}
@@ -856,7 +892,7 @@ export default function App() {
                     A small experiment in buffering, backpressure, and recovery.
                   </p>
                 </div>
-                <span className="small-tag">AWS-FIRST · LOCAL DEMO</span>
+                <span className="small-tag">LAMBDA · SQS · S3</span>
               </section>
               <section className="architecture-hero">
                 <div>
@@ -913,7 +949,7 @@ export default function App() {
                   {
                     icon: ShieldCheck,
                     title: "Small by design",
-                    body: "100 jobs per path, one active run, bounded retries. The dashboard stays local. No AWS account is needed for local execution.",
+                    body: "100 jobs per path, one active run, bounded retries. AWS handles execution; the dashboard runs on your computer.",
                   },
                 ].map((p) => (
                   <section key={p.title}>
@@ -926,11 +962,10 @@ export default function App() {
               <section className="design-details">
                 <h2>What the demo proves—and what it doesn’t</h2>
                 <p>
-                  The QR image is real in both modes. Local mode models worker
-                  capacity and fast retries; it does not emulate AWS scheduling,
-                  cold starts, or SQS visibility timeouts. Live AWS runs use the
-                  actual Lambda and SQS adapters, and require deployment and
-                  verification.
+                  The AWS deployment invokes Lambda workers through direct calls
+                  or SQS. DynamoDB records job state and S3 stores the QR
+                  images. The workload, capacity limits, and retry policy
+                  determine the results.
                 </p>
                 <p>
                   Injected delays make the queue visible, but are not QR
@@ -1052,6 +1087,97 @@ export default function App() {
           </aside>
         </div>
       )}
+      {settings && (
+        <div className="modal-backdrop" onClick={() => setSettings(false)}>
+          <section
+            className="help-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Execution environment"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="modal-close icon-button"
+              aria-label="Close settings"
+              onClick={() => setSettings(false)}
+            >
+              <X />
+            </button>
+            <span className="brand-mark">
+              <Settings2 />
+            </span>
+            <h2>Execution environment</h2>
+            <p>
+              Choose where the next experiment runs. Your preference is saved on
+              this computer.
+            </p>
+            <div className="environment-options">
+              <button
+                className={
+                  session?.mode === "aws"
+                    ? "environment-option chosen"
+                    : "environment-option"
+                }
+                disabled={busy || switching}
+                onClick={() => switchEnvironment("aws")}
+              >
+                <strong>
+                  AWS {session?.mode === "aws" && <Check size={16} />}
+                </strong>
+                <span>
+                  Run against your deployed Lambda, SQS, S3, and DynamoDB
+                  resources.
+                </span>
+                <small>
+                  {session?.configured
+                    ? `Configured in ${session.region}. Deployment is checked before each run.`
+                    : "Setup required: deploy the stack, save its configuration, then restart."}
+                </small>
+              </button>
+              <button
+                className={
+                  session?.mode === "local"
+                    ? "environment-option chosen"
+                    : "environment-option"
+                }
+                disabled={busy || switching}
+                onClick={() => switchEnvironment("local")}
+              >
+                <strong>
+                  Local demo {session?.mode === "local" && <Check size={16} />}
+                </strong>
+                <span>
+                  Generate real QR images on your computer, without AWS calls or
+                  charges.
+                </span>
+                <small>
+                  Capacity and retry scheduling are simulated. These results are
+                  not AWS benchmarks.
+                </small>
+              </button>
+            </div>
+            {run && (
+              <p>
+                Displayed run environment:{" "}
+                <b>{run.mode === "aws" ? "AWS" : "Local demo"}</b>.
+              </p>
+            )}
+            {busy && (
+              <p>
+                Finish or stop and drain the current experiment before
+                switching.
+              </p>
+            )}
+            <button
+              className="button primary"
+              disabled={switching}
+              onClick={() => setSettings(false)}
+            >
+              Done <Check size={16} />
+            </button>
+          </section>
+        </div>
+      )}
       {help && (
         <div className="modal-backdrop" onClick={() => setHelp(false)}>
           <section
@@ -1092,8 +1218,9 @@ export default function App() {
               </li>
             </ol>
             <p>
-              Local execution is free of AWS charges. Cloud execution is opt-in
-              and needs your own deployed stack.
+              Choose your execution environment in Settings. Start small; when
+              using AWS, disable the queue trigger after the session to limit
+              idle polling.
             </p>
             <button className="button primary" onClick={() => setHelp(false)}>
               Back to the experiment

@@ -1,6 +1,6 @@
 # AWS deployment and low-cost test session
 
-**Status:** Prepared for deployment, not live-tested. Do this only after creating your AWS account. Nothing in the local launcher provisions AWS resources.
+**Status:** Prepared for deployment, not live-tested. Do this only after creating your AWS account. The launcher runs the dashboard/controller on your computer and never provisions AWS resources. Experiments require AWS.
 
 ## 1. Prerequisites
 
@@ -36,10 +36,10 @@ Add `--profile your-profile` consistently if you use a named profile. The config
 Restart the local server in cloud mode:
 
 ```bash
-BURSTLAB_MODE=aws bash scripts/dev.sh
+bash scripts/dev.sh
 ```
 
-The dashboard must say **AWS LIVE**. Before running, the controller checks both worker caps/settings and confirms the work and dead-letter queues appear empty. Queue counts are approximate; after interrupted work, inspect AWS before relying on that check.
+The dashboard must show an AWS configuration; the run itself is verified by preflight. Before running, the controller checks both worker caps/settings and confirms the work and dead-letter queues appear empty. Queue counts are approximate; after interrupted work, inspect AWS before relying on that check.
 
 ## 4. Run only two or three small experiments
 

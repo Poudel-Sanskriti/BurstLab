@@ -70,9 +70,9 @@ def process(job, table=None, s3=None):
     try:
         claimed = table.update_item(
             Key=key,
-            UpdateExpression="SET #s=:running, owner=:owner, lease_until=:lease, started_at=if_not_exists(started_at,:now), last_started_at=:now, expires_at=:ttl ADD attempts :one",
+            UpdateExpression="SET #s=:running, #owner=:owner, lease_until=:lease, started_at=if_not_exists(started_at,:now), last_started_at=:now, expires_at=:ttl ADD attempts :one",
             ConditionExpression="(attribute_not_exists(#s) OR (#s <> :done AND #s <> :dead)) AND (attribute_not_exists(lease_until) OR lease_until < :now)",
-            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeNames={"#s": "status", "#owner": "owner"},
             ExpressionAttributeValues={
                 ":running": "running",
                 ":owner": owner,
@@ -115,14 +115,16 @@ def process(job, table=None, s3=None):
     def finish(status, **fields):
         values = {":owner": owner, ":status": status, ":zero": 0, ":done": "succeeded"}
         updates = ["#s=:status", "lease_until=:zero"]
+        names = {"#s": "status", "#owner": "owner"}
         for i, (name, value) in enumerate(fields.items()):
-            updates.append(f"{name}=:v{i}")
+            names[f"#f{i}"] = name
+            updates.append(f"#f{i}=:v{i}")
             values[f":v{i}"] = value
         table.update_item(
             Key=key,
             UpdateExpression="SET " + ", ".join(updates),
-            ConditionExpression="owner=:owner AND #s <> :done",
-            ExpressionAttributeNames={"#s": "status"},
+            ConditionExpression="#owner=:owner AND #s <> :done",
+            ExpressionAttributeNames=names,
             ExpressionAttributeValues=values,
         )
         event(status, **fields)

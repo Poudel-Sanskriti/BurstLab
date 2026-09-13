@@ -13,6 +13,68 @@
   --paper: #fffefa;
   --sidebar: #142820;
 }
+.environment-options {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+}
+.environment-option {
+  display: block;
+  text-align: left;
+  border: 1px solid #dae3cd;
+  background: #fffefa;
+  padding: 15px;
+  border-radius: 8px;
+}
+.environment-option.chosen {
+  border-color: #7f9f5b;
+  background: #eff5e3;
+}
+.environment-option strong {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  margin-bottom: 7px;
+}
+.environment-option span {
+  display: block;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #738164;
+}
+.environment-option small {
+  font-size: 10px;
+  line-height: 1.6;
+  margin-top: 8px;
+  color: #8c977f;
+}
+.aws-setup-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px;
+  margin-bottom: 24px;
+  border: 1px solid #d7e2c6;
+  border-radius: 10px;
+  background: #edf3e2;
+}
+.aws-setup-card h2 {
+  font-size: 20px;
+  margin: 8px 0;
+}
+.aws-setup-card p {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #687d59;
+  max-width: 650px;
+}
+@media (max-width: 650px) {
+  .aws-setup-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
 * {
   box-sizing: border-box;
 }

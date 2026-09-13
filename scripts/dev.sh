@@ -16,5 +16,5 @@ if [ ! -d frontend/node_modules ]; then
   npm --prefix frontend ci --no-audit --no-fund
 fi
 npm --prefix frontend run build
-echo "BurstLab is ready at http://127.0.0.1:8000 — mode: ${BURSTLAB_MODE:-local}"
+echo "BurstLab is ready at http://127.0.0.1:8000 — AWS experiments"
 exec .venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000

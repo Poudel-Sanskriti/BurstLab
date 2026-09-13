@@ -89,8 +89,10 @@ export interface Run {
 }
 export interface Session {
   token: string;
-  mode: "local" | "aws";
-  region: string;
+  mode: "aws" | "local";
+  region: string | null;
+  configured: boolean;
+  setup_message: string | null;
   active_run_id: string | null;
 }
 export type HistoryItem = Pick<
