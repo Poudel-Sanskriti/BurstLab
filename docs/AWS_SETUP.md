@@ -1,6 +1,6 @@
 # AWS deployment and low-cost test session
 
-**Status:** Prepared for deployment, not live-tested. Do this only after creating your AWS account. The launcher runs the dashboard/controller on your computer and never provisions AWS resources. Experiments require AWS.
+**Status:** Deployed and smoke-tested in Ohio (`us-east-2`): three successful jobs per path and a verified S3 image download. Queue processing is disabled while idle. Do this only after creating your AWS account. The launcher runs the dashboard/controller on your computer and never provisions AWS resources. Experiments require AWS.
 
 ## 1. Prerequisites
 

@@ -26,7 +26,7 @@ A saved configuration means the resource identifiers are available; it does not 
 - Python/FastAPI controller, real AWS invocation, state reconciliation, SQLite run history, JSON/CSV export, and stop-arrivals control.
 - React/TypeScript dashboard with experiment presets, two processing lanes, job inspection, QR previews, charts, archive, and replay.
 
-**Live AWS deployment and end-to-end verification are still pending.** Tests use isolated logic and AWS mocks; they do not validate live IAM permissions, service quotas, or packaging.
+**Live AWS smoke verification passed in Ohio (`us-east-2`).** The stack deployed, three direct jobs and three queued jobs completed, and a private S3 PNG was downloaded through the app. The account remained on its Free plan. Queue processing is disabled between sessions; enable it with the helper before running. This verifies a small end-to-end path, not a production load benchmark.
 
 ## Run controls
 
