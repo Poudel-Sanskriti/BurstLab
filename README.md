@@ -57,3 +57,7 @@ Keep tests small and disable the SQS event-source mapping after the session. No 
 
 SQS retries can take 90 seconds or longer. Telemetry is polled every two seconds; brief transitions may not animate even when recorded. Events are not a transactional audit log. App-level exhausted attempts and physical dead-letter queue routing are distinct. Interrupted cloud jobs can continue: inspect queues before another run. The lab does not predict arbitrary production capacity or promise exactly-once delivery.
 
+
+## Small-account deployment
+
+For accounts with low Lambda quotas, the template defaults to application-level capacity limits backed by expiring DynamoDB permits. Both paths admit the configured number of active QR jobs; excess direct jobs are labeled application capacity rejections. SQS also limits event-source concurrency. This differs from Lambda reserved concurrency, and the report's `capacity_mode` records the choice. No quota increase or plan upgrade is needed for this configuration.

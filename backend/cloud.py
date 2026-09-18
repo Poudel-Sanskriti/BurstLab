@@ -46,12 +46,13 @@ class Cloud:
                 FunctionName=self.outputs[name]
             ).get("ReservedConcurrentExecutions")
             if (
-                cap != config.concurrency
+                (cap is not None and cap != config.concurrency)
+                or int(function.get("Environment", {}).get("Variables", {}).get("MAX_ACTIVE_JOBS", "0")) != config.concurrency
                 or function["MemorySize"] != 256
                 or function["Timeout"] != 15
             ):
                 raise ValueError(
-                    "AWS worker settings do not match this experiment. Deploy both workers with the selected concurrency, 256 MB, and a 15-second timeout."
+                    "AWS worker settings do not match this experiment. Deploy both workers with the selected admission limit, 256 MB, and a 15-second timeout."
                 )
         mappings = self.lambda_client.list_event_source_mappings(
             FunctionName=self.outputs["QueuedFunction"],

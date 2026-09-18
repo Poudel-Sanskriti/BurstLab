@@ -10,7 +10,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["configure", "enable", "disable", "status"])
     parser.add_argument("--stack", default="burstlab")
-    parser.add_argument("--region", default="us-east-1")
+    parser.add_argument("--region", default="us-east-2")
     parser.add_argument("--profile")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]

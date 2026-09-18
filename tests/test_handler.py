@@ -5,6 +5,23 @@ from backend.worker.handler import queue_handler, validate_job, process
 
 
 class HandlerTests(unittest.TestCase):
+    def test_admission_rejects_without_generating_when_all_slots_are_busy(self):
+        table, s3 = Mock(), Mock()
+        busy = ClientError({"Error": {"Code": "ConditionalCheckFailedException"}}, "UpdateItem")
+        table.update_item.side_effect = [busy, busy, {}]
+        job = {"run_id": "r1", "id": "j1", "lane": "direct", "payload": "hello"}
+        with patch.dict("os.environ", {"MAX_ACTIVE_JOBS": "2"}):
+            self.assertEqual(process(job, table, s3)["status"], "rejected")
+        s3.put_object.assert_not_called()
+
+    def test_admission_releases_slot_after_success(self):
+        table, s3 = Mock(), Mock()
+        table.update_item.return_value = {"Attributes": {"attempts": 1, "started_at": 1000}}
+        job = {"run_id": "r1", "id": "j1", "lane": "direct", "payload": "hello"}
+        with patch.dict("os.environ", {"MAX_ACTIVE_JOBS": "2", "BUCKET_NAME": "test"}):
+            self.assertEqual(process(job, table, s3)["status"], "succeeded")
+        table.delete_item.assert_called_once()
+
     def test_completed_duplicate_does_not_rewrite_artifact(self):
         table, s3 = Mock(), Mock()
         table.update_item.side_effect = ClientError(

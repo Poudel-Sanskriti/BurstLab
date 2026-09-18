@@ -56,6 +56,55 @@ def native(value):
 
 
 def process(job, table=None, s3=None):
+    """Use expiring distributed permits when low AWS quotas prohibit reservations."""
+    validate_job(job)
+    limit = int(os.environ.get("MAX_ACTIVE_JOBS", "0"))
+    if not limit:
+        return _process(job, table, s3)
+    table = table if table is not None else boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
+    owner = uuid.uuid4().hex
+    acquired = None
+    now = int(time.time() * 1000)
+    for index in range(limit):
+        key = {"PK": "CAPACITY#" + job["lane"], "SK": f"SLOT#{index}"}
+        try:
+            table.update_item(
+                Key=key,
+                UpdateExpression="SET #owner=:owner, lease_until=:lease, expires_at=:ttl",
+                ConditionExpression="attribute_not_exists(lease_until) OR lease_until < :now",
+                ExpressionAttributeNames={"#owner": "owner"},
+                ExpressionAttributeValues={":owner": owner, ":lease": now + 30000, ":ttl": int(time.time()) + 86400, ":now": now},
+            )
+            acquired = key
+            break
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+                raise
+    if acquired is None:
+        if job["lane"] == "queued":
+            raise RuntimeError("Application capacity reached; retry after visibility timeout")
+        try:
+            table.update_item(
+                Key={"PK": job["run_id"], "SK": "JOB#direct#" + job["id"]},
+                UpdateExpression="SET #s=:rejected, #error=:error, finished_at=:now, expires_at=:ttl",
+                ConditionExpression="attribute_not_exists(#s)",
+                ExpressionAttributeNames={"#s": "status", "#error": "error"},
+                ExpressionAttributeValues={":rejected": "rejected", ":error": "Application worker capacity reached", ":now": now, ":ttl": int(time.time()) + 86400},
+            )
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+                raise
+        return {"status": "rejected", "error": "Application worker capacity reached"}
+    try:
+        return _process(job, table, s3)
+    finally:
+        try:
+            table.delete_item(Key=acquired, ConditionExpression="#owner=:owner", ExpressionAttributeNames={"#owner": "owner"}, ExpressionAttributeValues={":owner": owner})
+        except ClientError:
+            log.warning("Capacity permit will expire automatically", exc_info=True)
+
+
+def _process(job, table=None, s3=None):
     validate_job(job)
     table = (
         table

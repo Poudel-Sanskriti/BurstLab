@@ -3,6 +3,10 @@ Transform: AWS::Serverless-2016-10-31
 Description: BurstLab - bounded QR processing experiments with no hosted control plane
 
 Parameters:
+  UseReservedConcurrency:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
   WorkerConcurrency:
     Type: Number
     Default: 2
@@ -13,6 +17,7 @@ Parameters:
     AllowedValues: ['true', 'false']
 
 Conditions:
+  ReserveWorkers: !Equals [!Ref UseReservedConcurrency, 'true']
   QueueEnabled: !Equals [!Ref EnableQueue, 'true']
 
 Globals:
@@ -21,9 +26,10 @@ Globals:
     Architectures: [arm64]
     Timeout: 15
     MemorySize: 256
-    ReservedConcurrentExecutions: !Ref WorkerConcurrency
+    ReservedConcurrentExecutions: !If [ReserveWorkers, !Ref WorkerConcurrency, !Ref AWS::NoValue]
     Environment:
       Variables:
+        MAX_ACTIVE_JOBS: !Ref WorkerConcurrency
         TABLE_NAME: !Ref Jobs
         BUCKET_NAME: !Ref Results
     Tags:
@@ -129,6 +135,8 @@ Resources:
       RetentionInDays: 1
 
 Outputs:
+  CapacityMode:
+    Value: !If [ReserveWorkers, 'reserved-and-application', 'application-admission']
   DirectFunction:
     Value: !Ref DirectWorker
   QueuedFunction:

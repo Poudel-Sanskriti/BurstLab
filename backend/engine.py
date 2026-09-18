@@ -126,6 +126,7 @@ class Engine:
             ).hexdigest(),
             "worker_version": "qr-v1",
             "region": self.cloud.region if self.cloud else "local",
+            "capacity_mode": self.cloud.outputs.get("CapacityMode", "unspecified") if self.cloud and self.mode == "aws" else "local-simulation",
             "phases": {},
             "events": [],
             "jobs": [
