@@ -33,7 +33,13 @@ class Cloud:
         self.sqs = session.client(
             "sqs", config=Config(retries={"total_max_attempts": 1})
         )
-        self.s3 = session.client("s3")
+        # Pin signing to the bucket's region; a global-host redirect invalidates
+        # the host-bound signature for a newly created regional bucket.
+        self.s3 = session.client(
+            "s3",
+            endpoint_url=f"https://s3.{self.region}.amazonaws.com",
+            config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+        )
         self.table = session.resource("dynamodb").Table(self.outputs["TableName"])
         self.seen = set()
 
