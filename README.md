@@ -1,63 +1,59 @@
 # BurstLab
 
-**A visual AWS lab for systems under pressure.** Compare direct and queued processing, inspect generated QR images, and replay observed job events.
+**See how cloud systems respond when requests arrive faster than workers can process them.**
 
-## Execution environment
+BurstLab compares direct Lambda invocation with SQS-backed processing through a visual dashboard. Both paths run the same QR-generation workload on AWS, making the tradeoffs between completion rate, waiting time, and retries visible.
 
-AWS is the default environment. AWS experiments use your deployed Lambda workers, SQS queue, DynamoDB table, and S3 bucket. The dashboard/controller run on your computer to avoid hosted-server costs. Choose **Settings → Execution environment → Local demo** for free, simulated scheduling with real QR output.
+## Watch the demo
 
-Without an AWS configuration, Run is disabled in AWS mode. Settings lets you select Local demo instead. The main dashboard has no prominent simulation banner; Settings and JSON reports retain the actual environment. History and artifact access are scoped to the selected environment, so runs are not mixed. You cannot switch during an experiment, and your selection persists across restarts.
+[![Watch the BurstLab AWS demo on YouTube](https://img.youtube.com/vi/SPmKeS_lvI0/hqdefault.jpg)](https://www.youtube.com/watch?v=SPmKeS_lvI0)
 
-## Get started
+**[▶ Watch BurstLab in action](https://www.youtube.com/watch?v=SPmKeS_lvI0)**
 
-1. Install Python 3.11+ and Node.js 20.19+ or a current Node 22/24 release.
-2. Run `bash scripts/dev.sh` to install dependencies, build the dashboard, and open the controller at **http://127.0.0.1:8000**.
-3. Follow [AWS setup](docs/AWS_SETUP.md): configure AWS credentials, build/deploy the SAM stack, save its outputs with the helper, and enable the queue trigger.
-4. Restart `bash scripts/dev.sh`. No mode environment variable is needed; select AWS in Settings if you previously used Local demo.
-5. Start with 5 jobs per path. The controller checks deployed resource settings before submitting work.
+The walkthrough runs a traffic-burst experiment in AWS mode, then explores the deployed CloudFormation stack, Lambda functions, SQS queues, DynamoDB records, and a generated QR image in S3.
 
-A saved configuration means the resource identifiers are available; it does not prove the deployment is healthy. The preflight check runs before an experiment. No cloud resources are created by the launcher.
+## Why I built it
 
-## Implemented components
+I wanted to move beyond building features and understand how software behaves after deployment—when requests overlap, work backs up, or processing fails. BurstLab turns those behaviors into a repeatable experiment with visible outputs and recorded results. QR generation keeps the workload inexpensive and easy to verify while the focus stays on system design.
 
-- Shared Python QR worker; direct synchronous Lambda and SQS-triggered Lambda adapters.
-- Conditional DynamoDB claims, repeatable S3 artifact keys, bounded application retries, and partial-batch failure responses.
-- SAM/CloudFormation template with private encrypted S3, DynamoDB, SQS, dead-letter queue, and short-lived CloudWatch logs.
-- Python/FastAPI controller, real AWS invocation, state reconciliation, SQLite run history, JSON/CSV export, and stop-arrivals control.
-- React/TypeScript dashboard with experiment presets, two processing lanes, job inspection, QR previews, charts, archive, and replay.
+## Architecture
 
-**Live AWS smoke verification passed in Ohio (`us-east-2`).** The stack deployed, three direct jobs and three queued jobs completed, and a private S3 PNG was downloaded through the app. The account remained on its Free plan. Queue processing is disabled between sessions; enable it with the helper before running. This verifies a small end-to-end path, not a production load benchmark.
+```mermaid
+flowchart LR
+    UI[React dashboard] --> API[FastAPI controller]
+    API -->|Direct invocation| D[Lambda worker]
+    API --> Q[SQS queue]
+    Q --> W[Lambda worker]
+    D --> S3[Private S3 artifacts]
+    W --> S3
+    D --> DB[DynamoDB job state]
+    W --> DB
+    DB --> API
+```
 
-## Run controls
+- **Controlled comparisons:** identical inputs, shared worker code, sequential trials, and matching application-level capacity limits.
+- **Failure handling:** conditional job claims, expiring capacity permits, bounded retries, and SQS dead-letter configuration.
+- **Visible evidence:** job timelines, QR previews, completion counts, latency metrics, saved runs, replay, and JSON/CSV exports.
+- **Reproducible infrastructure:** AWS SAM/CloudFormation defines the workers, queues, storage, permissions, and CloudWatch logs.
 
-Maximum 100 jobs per path, one active experiment, 2–5 workers per path, 0–1000 ms injected delay, and up to 5 application attempts. Both functions must have matching deployed concurrency, memory, and timeout settings. Changing concurrency in the UI requires matching changes to the SAM deployment.
+The direct baseline has no caller retries; the queued path can retry. Injected delays and failures are explicit experiment settings. Results describe the tested configuration, not a general production-capacity benchmark.
 
-Paths run sequentially using the same payload manifest. Direct requests have one synchronous attempt; queued requests may retry. Injected delays and failures are deliberate conditions, not natural QR-processing performance. Latency percentiles include successful jobs only; compare them alongside unsuccessful outcomes. Stopping arrivals allows accepted work to drain.
+**Stack:** React · TypeScript · Python · FastAPI · boto3 · Lambda · SQS · DynamoDB · S3 · CloudWatch · AWS SAM/CloudFormation
 
-## Tests and development
+## Run it
+
+Requires Python 3.11+ and Node.js 20.19+ or a current Node 22/24 release.
 
 ```bash
+bash scripts/dev.sh
+```
+
+Open **http://127.0.0.1:8000**. Follow the [AWS setup guide](docs/AWS_SETUP.md) to deploy and connect your stack. AWS is the default; a local demo is available under **Settings → Execution environment**. The dashboard and controller run on your computer, while AWS-mode jobs execute in the cloud.
+
+Keep cloud experiments small and disable queue processing afterward; the setup guide includes the commands and cleanup steps.
+
+```bash
+# Backend and frontend unit tests
 .venv/bin/python -m pytest tests -q
 npm --prefix frontend test
-npm --prefix frontend run build
 ```
-
-For frontend development, run the FastAPI controller and Vite in separate terminals:
-
-```bash
-.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
-npm --prefix frontend run dev
-```
-
-The API is session-protected and loopback-bound. AWS credentials remain in the server-side SDK credential chain, never in browser code. Generated URLs are encoded into QR images without being visited.
-
-## Cost and limitations
-
-Keep tests small and disable the SQS event-source mapping after the session. No always-on VM, NAT gateway, hosted control plane, provisioned concurrency, or paid inference is required. Storage and logs use short retention, but expiry is asynchronous and budget alerts do not cap the bill.
-
-SQS retries can take 90 seconds or longer. Telemetry is polled every two seconds; brief transitions may not animate even when recorded. Events are not a transactional audit log. App-level exhausted attempts and physical dead-letter queue routing are distinct. Interrupted cloud jobs can continue: inspect queues before another run. The lab does not predict arbitrary production capacity or promise exactly-once delivery.
-
-
-## Small-account deployment
-
-For accounts with low Lambda quotas, the template defaults to application-level capacity limits backed by expiring DynamoDB permits. Both paths admit the configured number of active QR jobs; excess direct jobs are labeled application capacity rejections. SQS also limits event-source concurrency. This differs from Lambda reserved concurrency, and the report's `capacity_mode` records the choice. No quota increase or plan upgrade is needed for this configuration.
