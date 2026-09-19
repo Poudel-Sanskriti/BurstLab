@@ -18,18 +18,9 @@ I wanted to move beyond building features and understand how software behaves af
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    UI[React dashboard] --> API[FastAPI controller]
-    API -->|Direct invocation| D[Lambda worker]
-    API --> Q[SQS queue]
-    Q --> W[Lambda worker]
-    D --> S3[Private S3 artifacts]
-    W --> S3
-    D --> DB[DynamoDB job state]
-    W --> DB
-    DB --> API
-```
+[![BurstLab AWS architecture: direct and SQS-queued Lambda workers, DynamoDB state, S3 artifacts, CloudWatch logs, and CloudFormation infrastructure](docs/images/burstlab-architecture.png)](docs/images/burstlab-architecture.svg)
+
+<sub>Click to enlarge. Service icons from [AWS Architecture Icons](https://aws.amazon.com/architecture/icons/).</sub>
 
 - **Controlled comparisons:** identical inputs, shared worker code, sequential trials, and matching application-level capacity limits.
 - **Failure handling:** conditional job claims, expiring capacity permits, bounded retries, and SQS dead-letter configuration.
