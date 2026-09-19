@@ -6,7 +6,7 @@ BurstLab compares direct Lambda invocation with SQS-backed processing through a 
 
 ## Watch the demo
 
-[![Watch the BurstLab AWS demo on YouTube](https://img.youtube.com/vi/SPmKeS_lvI0/hqdefault.jpg)](https://www.youtube.com/watch?v=SPmKeS_lvI0)
+[![BurstLab dashboard comparing direct and queued AWS processing — click to watch the demo](docs/images/burstlab-dashboard.png)](https://www.youtube.com/watch?v=SPmKeS_lvI0)
 
 **[▶ Watch BurstLab in action](https://www.youtube.com/watch?v=SPmKeS_lvI0)**
 
